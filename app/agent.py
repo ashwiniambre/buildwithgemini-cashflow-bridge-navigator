@@ -21,12 +21,14 @@ from typing import Any, Dict, List, Optional
 import urllib.request
 from google import genai
 from google.adk.agents import Agent
+from google.adk.agents.callback_context import CallbackContext
 from google.adk.apps import App
 from google.adk.code_executors.agent_engine_sandbox_code_executor import (
     AgentEngineSandboxCodeExecutor,
 )
 from google.adk.models import Gemini
 from google.adk.tools import ToolContext
+from google.adk.tools.preload_memory_tool import PreloadMemoryTool
 from google.cloud import firestore, storage
 from google.genai import types
 
@@ -34,6 +36,7 @@ MODEL = "gemini-3.6-flash"
 GCP_PROJECT_ID = "qwiklabs-gcp-04-6cd340013265"
 GCS_BUCKET_NAME = "cashflow-bridge-assets-6cd340013265"
 SANDBOX_RESOURCE_NAME = "projects/356017740640/locations/us-east1/reasoningEngines/627185621739241472/sandboxEnvironments/3211752629570895872"
+MEMORY_BANK_ID = "627185621739241472"
 
 _firestore_client: Optional[firestore.Client] = None
 
@@ -377,6 +380,15 @@ async def generate_item_image(
     }
 
 
+async def generate_memories_callback(callback_context: CallbackContext):
+    """WRITE: After each turn, send the session to Vertex AI Memory Bank for extraction."""
+    try:
+        await callback_context.add_session_to_memory()
+    except ValueError:
+        pass
+    return None
+
+
 root_agent = Agent(
     name="root_agent",
     model=Gemini(
@@ -387,7 +399,8 @@ root_agent = Agent(
         "You are the Cashflow Bridge Navigator — a personal financial crisis, cashflow, and hardship advisor. "
         "You help individuals navigate temporary income gaps and disruptions (such as layoffs, medical or disability leave, "
         "unemployment, freelance invoice delays, or emergency expenses) by prioritizing essential living expenses and protecting "
-        "their credit.\n\n"
+        "their credit. You remember the user's stated financial preferences, hardship situations, income dates, and personal context "
+        "across conversations and use them to personalize your advice.\n\n"
         "Key capabilities and guidelines:\n"
         "1. Inspect and track bills, credit cards, utilities, and medical expenses using your Firestore tools.\n"
         "2. Calculate cashflow runway, timelines, and shortfalls until the next income arrival using calculate_cashflow_runway.\n"
@@ -396,12 +409,14 @@ root_agent = Agent(
         "5. Reference federal benchmark interest rates from the U.S. Treasury to explain why carrying high credit card balances is costly and why hardship APR freezes save money.\n"
         "6. Generate visual roadmap cards, debt payoff badges, or cashflow bridge milestone illustrations using generate_item_image when helpful.\n"
         "7. When running custom financial math, compound interest projections, or simulation scripts, safely execute Python code in your Agent Engine Sandbox environment.\n"
-        "8. Communicate empathetically, clearly, and concisely, suitable for both visual reading and spoken voice playback."
+        "8. Remember user preferences and past hardship details recalled automatically by PreloadMemoryTool from Memory Bank.\n"
+        "9. Communicate empathetically, clearly, and concisely, suitable for both visual reading and spoken voice playback."
     ),
     code_executor=AgentEngineSandboxCodeExecutor(
         sandbox_resource_name=SANDBOX_RESOURCE_NAME,
     ),
     tools=[
+        PreloadMemoryTool(),
         list_pending_bills,
         add_pending_bill,
         update_bill_hardship_status,
@@ -409,6 +424,7 @@ root_agent = Agent(
         get_federal_interest_rates,
         generate_item_image,
     ],
+    after_agent_callback=generate_memories_callback,
 )
 
 app = App(

@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.agent import get_firestore_client, root_agent
+from app.app_utils import services
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
@@ -31,6 +32,7 @@ session_service = InMemorySessionService()
 runner = Runner(
     agent=root_agent,
     session_service=session_service,
+    memory_service=services.get_memory_service(),
     app_name="cashflow_bridge_voice",
 )
 sessions: Dict[str, Any] = {}

@@ -26,10 +26,15 @@ import os
 
 from google.adk.artifacts import GcsArtifactService, InMemoryArtifactService
 from google.adk.cli.service_registry import get_service_registry
-from google.adk.cli.utils.service_factory import create_session_service_from_options
+from google.adk.cli.utils.service_factory import (
+    create_memory_service_from_options,
+    create_session_service_from_options,
+)
 
 SESSION_SERVICE_URI = "shared://session"
 ARTIFACT_SERVICE_URI = "shared://artifact"
+MEMORY_SERVICE_URI = "shared://memory"
+MEMORY_BANK_DEFAULT_ID = "627185621739241472"
 
 _AGENT_DIR = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -67,6 +72,36 @@ def get_artifact_service():
     return InMemoryArtifactService()
 
 
+@functools.cache
+def get_memory_service():
+    """Process-wide memory service: VertexAiMemoryBankService when configured, else in-memory."""
+    if uri := os.environ.get("MEMORY_SERVICE_URI"):
+        return create_memory_service_from_options(
+            base_dir=_AGENT_DIR, memory_service_uri=uri
+        )
+    agent_engine_id = (
+        os.environ.get("GOOGLE_CLOUD_AGENT_ENGINE_ID")
+        or os.environ.get("MEMORY_BANK_ID")
+        or MEMORY_BANK_DEFAULT_ID
+    )
+    if agent_engine_id:
+        from google.adk.memory.vertex_ai_memory_bank_service import (
+            VertexAiMemoryBankService,
+        )
+
+        return VertexAiMemoryBankService(
+            project=os.environ.get("GOOGLE_CLOUD_PROJECT", "qwiklabs-gcp-04-6cd340013265"),
+            location=os.environ.get("GOOGLE_CLOUD_AGENT_ENGINE_LOCATION")
+            or os.environ.get("GOOGLE_CLOUD_LOCATION")
+            or "us-east1",
+            agent_engine_id=agent_engine_id,
+        )
+    from google.adk.memory.in_memory_memory_service import InMemoryMemoryService
+
+    return InMemoryMemoryService()
+
+
 _registry = get_service_registry()
 _registry.register_session_service("shared", lambda uri, **kw: get_session_service())
 _registry.register_artifact_service("shared", lambda uri, **kw: get_artifact_service())
+_registry.register_memory_service("shared", lambda uri, **kw: get_memory_service())

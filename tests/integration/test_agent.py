@@ -75,3 +75,12 @@ def test_agent_engine_sandbox_code_executor() -> None:
     assert len(result.outputs) > 0
     output_str = result.outputs[0].data.decode("utf-8")
     assert "4" in output_str
+
+
+def test_agent_memory_bank_wiring() -> None:
+    """Tests that PreloadMemoryTool and after_agent_callback are wired into root_agent."""
+    from google.adk.tools.preload_memory_tool import PreloadMemoryTool
+
+    has_preload_memory_tool = any(isinstance(tool, PreloadMemoryTool) for tool in root_agent.tools)
+    assert has_preload_memory_tool, "PreloadMemoryTool should be in root_agent.tools"
+    assert root_agent.after_agent_callback is not None, "root_agent should have after_agent_callback"
